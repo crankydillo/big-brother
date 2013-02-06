@@ -1,0 +1,111 @@
+#!/opt/scala-2.9.2/bin/scala
+exec scala "$0" "$@"
+!#
+
+import scala.sys.process._
+import scala.util.parsing.json.JSON.parseFull
+
+if (args.size != 2) {
+  println("Usage: sonar-metrics user pass")
+  System.exit(1)
+}
+
+val user = args(0)
+val pass = args(1)
+
+val curlPrefix = "curl -u " + user + ":" + pass + 
+    " https://alm.pervasive.com/sonar/api/"
+
+def keys(projectKey: String, depth: Int, searchSet: Set[String]): List[String] = {
+  val cmd = curlPrefix + "resources?resource=" + projectKey + "&depth=" + depth
+  val jsonResponse = cmd!!
+
+  val resources: List[Map[String, Any]] = 
+    parseFull(jsonResponse) match {
+      case Some(l: List[Map[String, Any]]) => l 
+      case s => throw new RuntimeException("Expected a JSON object, not " + s)
+    }
+
+  resources
+  .filter { r => searchSet.exists(ca => r("name").toString.toLowerCase.indexOf(ca) != -1 ) }
+  .map { _("key").asInstanceOf[String] }
+}
+
+val projectKeys = List(
+    ("com.pervasive.di:di-top:10.2.6", 2, Set("design repo"))
+    , ("com.pervasive.di:di-top:10.2.6", 3, Set("administration"))
+    , ("com.pervasive.connectivity:connectivity-top:10.2.6", 1, Set("longview", "mscrm", "excel", "derby", "netsuite"))
+  )
+
+case class Metric(name: String, beginVal: String, endVal: String)
+
+case class ProjectStats(
+  name: String
+  , start: String  // TODO dates please..
+  , end: String
+  , locs: (Float, Float)
+  , coverages: (Float, Float)
+  , metrics: List[Metric]
+) {
+  def linesCoveredStart = locs._1 * coverages._1
+  def linesCoveredEnd = locs._2 * coverages._2
+}
+
+val projectStats = 
+projectKeys
+.flatMap { case (pn, depth, set) => keys(pn, depth, set) }
+.map { proj => (proj, curlPrefix + "timemachine?resource=" + proj + "&metrics=coverage,ncloc&fromDateTime=2012-11-14") }
+.map { case (proj, cmd) => (proj, cmd!!) }
+.map { case (proj, resp) => {
+    parseFull(resp) match {
+      case Some(l: List[Map[String, Any]]) => {
+        val sz = l.size
+        if (sz != 1) {
+          println("Expected the list of metrics to be 1, but was " + 
+             sz + ".  What's up with that?")
+        }
+
+        val metricNames = l(0)("cols").asInstanceOf[List[Map[String, Any]]].map { _("metric") }  // yuck
+
+        val cells = l(0)("cells").asInstanceOf[List[Map[String, Any]]]
+        val first = cells.head
+        val last = cells.last
+
+        val metrics = 
+           metricNames.zipWithIndex.map { case (n, idx) => 
+              Metric(n + ""
+                 , first("v").asInstanceOf[List[Any]](idx) + ""
+                 , last("v").asInstanceOf[List[Any]](idx) + ""
+              )
+           }
+        val locs = {
+            val m = metrics.find(m => m.name == "ncloc").get
+            (m.beginVal.toFloat, m.endVal.toFloat)
+        }
+        val coverages = {
+            val m = metrics.find(m => m.name == "coverage").get
+            (m.beginVal.toFloat, m.endVal.toFloat)
+        }
+        ProjectStats(proj, first("d") + "", last("d") + "", locs, coverages, metrics)
+      }
+      case s => throw new RuntimeException("Expected a JSON List, not " + s)
+    }
+  }
+}
+
+println("Projects Touched")
+println("----------------")
+projectStats.foreach {s => println(s.name) }
+
+val locStart = projectStats.map { _.locs._1 }.sum
+val locEnd = projectStats.map { _.locs._2 }.sum
+
+val coverageStart = projectStats.map { _.linesCoveredStart }.sum / locStart
+val coverageEnd = projectStats.map { _.linesCoveredEnd }.sum / locEnd
+
+println
+println("Totals (Begin, End)")
+println("------------------")
+println("Lines of Code: " +  locStart + ", " + locEnd)
+println("Test Coverage: " + coverageStart + "%, " + coverageEnd + "%")
+
