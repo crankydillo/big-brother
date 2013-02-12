@@ -15,7 +15,7 @@ import org.joda.time.DateTime
  *
  * @param logRetriever  [[LogRetriever]] that will give us the SVN log as XML
  */
-class SecureSubversionMetrics private[vcs] (
+class SubversionMetrics private[vcs] (
   logRetriever: LogRetriever
 ) extends VCSMetrics {
 
@@ -31,7 +31,10 @@ class SecureSubversionMetrics private[vcs] (
     , user: String
     , password: String
     , svnPath: String = "svn"
-  ) = this(new SvnCLILogRetriever(urlPrefix, user, password, svnPath))
+  ) = this(new SvnCLILogRetriever(urlPrefix, svnPath, Some(User(user, password))))
+
+  def this(urlPrefix: String, svnPath: String = "svn") = 
+    this(new SvnCLILogRetriever(urlPrefix, svnPath))
 
   def projectsChanged(
     project: String
@@ -58,7 +61,6 @@ class SecureSubversionMetrics private[vcs] (
         )
     }.toMap
   }
-
 }
 
 // Retrieves the Subversion log in XML form
@@ -66,13 +68,13 @@ private[this] trait LogRetriever {
   def log(project: String, since: DateTime, until: DateTime): Elem 
 }
 
+case class User(username: String, password: String)
 
 // An implementation that uses the svn CLI
 private[this] class SvnCLILogRetriever(
   urlPrefix: String
-  , user: String
-  , password: String
   , svnPath: String = "svn"
+  , user: Option[User] = None
 ) extends LogRetriever {
   import scala.sys.process._
 
@@ -85,8 +87,13 @@ private[this] class SvnCLILogRetriever(
     def format(date: DateTime) = date.toString("yyyy-MM-dd")
     val realProject = if (project.startsWith("/")) project else "/" + project
 
+    val maybeUserInfo = user match {
+      case Some(User(u, p)) => " --username " + u + " --password " + p
+      case _ => ""
+    }
+
     XML.loadString(
-      (svnPath + " --username " + user + " --password " + password + 
+      (svnPath + maybeUserInfo +
         " log -v -r {" + format(since) + "}:{" + format(until) + "} --xml " +
         trimmedUrlPrefix + realProject)!!
       )

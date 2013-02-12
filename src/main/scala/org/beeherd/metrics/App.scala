@@ -1,51 +1,104 @@
 package org.beeherd.metrics
 
+import scala.xml.XML
+
+import org.beeherd.client.XmlResponse
 import org.beeherd.client.http._
 import org.beeherd.metrics.vcs.{
-  CommitterMetrics, SecureSubversionMetrics
+  CommitterMetrics, SubversionMetrics
 }
 import org.apache.http.auth.{
   AuthScope, UsernamePasswordCredentials
 }
 import org.joda.time.DateTime
+import org.rogach.scallop._
+import org.rogach.scallop.exceptions._
 
 object App {
+
+  private class Conf(arguments: Seq[String]) extends LazyScallopConf(arguments) {
+    version("Project Metrics 1.0")
+    val svnUrlBase = opt[String]("svn-url-base", short = 's', required = true, 
+      descr = "Subversion base URL to which the projects get appended.")
+    val sonarUrl = opt[String]("sonar-server", short = 'S', required = true, 
+      descr = "Sonar URL")
+    val since = opt[String]("since", required = true,
+      descr = "Starting date for captured metrics.  Format: yyyy-MM-dd")
+    val until = opt[String]("until", required = true,
+      descr = "Ending date for captured metrics.  Format: yyyy-MM-dd")
+    val username = opt[String]("user", 
+      descr = "Username for Subversion and Sonar authentication.")
+    val password = opt[String]("password",
+      descr = "Password for Subversion and Sonar authentication.")
+    val projects = trailArg[List[String]]("projects", required = true, 
+      descr = "Projects for which metrics are wanted.")
+  }
+
   def main(args: Array[String]): Unit = {
+    val conf = new Conf(args)
+    conf.initialize {
+      case Help(c) => conf.printHelp; System.exit(0)
+      case Version => println("Project Metrics 1.0"); System.exit(0)
+      case RequiredOptionNotFound(o) => {
+        println(o + " is required."); 
+        println("Use --help for more information")
+        System.exit(1)
+      }
+      case ScallopException(m) => println(m); System.exit(1);
+    }
+
+    val svnUrlBase = conf.svnUrlBase.apply
+
+    System.exit(0)
+
+    val (protocol, server, port, _) = HttpRequest.parseUrl(svnUrlBase)
+
     val apacheClient = ClientFactory.createClient
 
-    val server = "server"
-    val port = 443
-    val user = "user"
-    val pass = "pass"
+    conf.username.get match {
+      case Some(u) => {
+        apacheClient.getCredentialsProvider().setCredentials(
+          new AuthScope(server, port)
+          , new UsernamePasswordCredentials(u, conf.password.apply)
+        )
+      }
+      case _ => {}
+    }
 
-    apacheClient.getCredentialsProvider().setCredentials(
-      new AuthScope(server, port)
-      , new UsernamePasswordCredentials(user, pass)
-    )
 
     try {
-      val svnUrlPrefix = "server"
-      val user = "user"
-      val pass = "pass"
 
-      val project = "project"
-      val since = DateTime.parse("2012-11-14")
-      val until = DateTime.parse("2013-02-14")
+      val since = DateTime.parse(conf.since.apply)
+      val until = DateTime.parse(conf.until.apply)
 
-      val vcsMetrics = new SecureSubversionMetrics(svnUrlPrefix, user, pass)
+      val vcsMetrics = new SubversionMetrics(svnUrlBase)
 
+      val project = "/servicemix/smx4/bundles/trunk/"
       val metricsMap = vcsMetrics.projectsChanged(project, since, until)
 
       print(metricsMap)
 
       val client = new HttpClient(apacheClient)
 
+      metricsMap.get("ningjiang") match {
+        case Some(metrics) => {
+          val projects = metrics.projectsChanged
+          val url = svnUrlBase + projects.toList.head + "/pom.xml"
+          println(url)
+          println(new MavenGAVRetriever(client).gav(url))
+        }
+        case _ => "couldn't find user:("
+      }
+      client
+
+      /*
       val resource = "sonar-resource"
 
       val url = server + "/sonar/api/timemachine" +
       "?resource=" + resource +
       "&metrics=coverage,ncloc&fromDateTime=2013-02-07"
       val r = client.get(url)
+      */
 
     } finally {
       apacheClient.getConnectionManager.shutdown
@@ -74,6 +127,17 @@ object App {
     .foreach { case (_, metrics) => printCommitterMetrics(metrics); println(); println() }
   }
 
+  sealed case class MavenGAV(group: String, artifact: String, version: String)
+
+  private class MavenGAVRetriever(httpClient: HttpClient) {
+    def gav(url: String): MavenGAV = {
+      val resp = httpClient.get(url)
+      val xml = XML.loadString(resp.content.get.toString)
+      def text(name: String) = (xml \ name).text.trim
+      MavenGAV(text("groupId"), text("artifactId"), text("version"))
+    }
+  }
+
    /*
   private def print(metricsMap: Map[String, CommitterMetrics]): Unit = { 
     println(report.city + ", " + report.state);
@@ -98,5 +162,4 @@ object App {
     println(tablizer.tablizeToStr(data, headers))
   }
  */
-
 }

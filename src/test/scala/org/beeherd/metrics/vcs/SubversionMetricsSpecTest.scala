@@ -49,7 +49,7 @@ with ThrownExpectations {
     "return a mapping of committer to committer metrics" >> {
       val logRetriever = mock[LogRetriever]
       logRetriever.log(anyString, any[DateTime], any[DateTime]) returns sampleSvnLog
-      val metricsMap = new SecureSubversionMetrics(logRetriever).projectsChanged(
+      val metricsMap = new SubversionMetrics(logRetriever).projectsChanged(
         "hi", new DateTime, new DateTime)
 
       metricsMap must haveSize(2)
