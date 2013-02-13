@@ -49,8 +49,6 @@ object App {
 
     val svnUrlBase = conf.svnUrlBase.apply
 
-    System.exit(0)
-
     val (protocol, server, port, _) = HttpRequest.parseUrl(svnUrlBase)
 
     val apacheClient = ClientFactory.createClient
@@ -73,11 +71,19 @@ object App {
 
       val vcsMetrics = new SubversionMetrics(svnUrlBase)
 
-      val project = "/servicemix/smx4/bundles/trunk/"
-      val metricsMap = vcsMetrics.projectsChanged(project, since, until)
+      //val project = "/servicemix/smx4/bundles/trunk/"
+      val projsMap = conf.projects.apply.map { p =>
+        p -> vcsMetrics.projectsChanged(p, since, until) 
+      }
 
-      print(metricsMap)
+      projsMap.foreach { case (p, metrics) =>
+        println(p)
+        print(metrics)
+        println
+        println
+      }
 
+      /*
       val client = new HttpClient(apacheClient)
 
       metricsMap.get("ningjiang") match {
@@ -90,6 +96,7 @@ object App {
         case _ => "couldn't find user:("
       }
       client
+      */
 
       /*
       val resource = "sonar-resource"
