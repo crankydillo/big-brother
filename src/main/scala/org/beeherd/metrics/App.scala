@@ -4,6 +4,7 @@ import scala.xml.XML
 
 import org.beeherd.client.XmlResponse
 import org.beeherd.client.http._
+import org.beeherd.metrics.sonar.SonarMetrics
 import org.beeherd.metrics.vcs.{
   CommitterMetrics, SubversionMetrics
 }
@@ -18,20 +19,49 @@ object App {
 
   private class Conf(arguments: Seq[String]) extends LazyScallopConf(arguments) {
     version("Project Metrics 1.0")
-    val svnUrlBase = opt[String]("svn-url-base", short = 's', required = true, 
-      descr = "Subversion base URL to which the projects get appended.")
-    val sonarUrl = opt[String]("sonar-server", short = 'S', required = true, 
-      descr = "Sonar URL")
-    val since = opt[String]("since", required = true,
-      descr = "Starting date for captured metrics.  Format: yyyy-MM-dd")
-    val until = opt[String]("until", required = true,
-      descr = "Ending date for captured metrics.  Format: yyyy-MM-dd")
-    val username = opt[String]("user", 
-      descr = "Username for Subversion and Sonar authentication.")
-    val password = opt[String]("password",
-      descr = "Password for Subversion and Sonar authentication.")
-    val projects = trailArg[List[String]]("projects", required = true, 
-      descr = "Projects for which metrics are wanted.")
+    val svnUrlBase = opt[String](
+      "svn-url-base"
+      , short = 's'
+      , required = true
+      , descr = "Subversion base URL to which the projects get appended."
+    )
+    val sonarUrl = opt[String](
+      "sonar-server"
+      , short = 'S'
+      , descr = "Sonar URL"
+    )
+    val committers = opt[List[String]](
+      "committers"
+      , descr = "Committers for which metrics are wanted."
+    )
+    val since = opt[String](
+      "since"
+      , required = true
+      , descr = "Starting date for captured metrics.  Format: yyyy-MM-dd"
+    )
+    val until = opt[String](
+      "until"
+      , required = true
+      , descr = "Ending date for captured metrics.  Format: yyyy-MM-dd"
+    )
+    val username = opt[String](
+      "user"
+      , descr = "Username for Subversion and Sonar authentication."
+    )
+    val password = opt[String](
+      "password"
+      , descr = "Password for Subversion and Sonar authentication."
+    )
+    val defaultVersion = opt[String](
+      "default-version"
+      , descr = "Default project version to use for Sonar analysis.  This is " +
+      "required if the project's pom does not include version information."
+    )
+    val projects = trailArg[List[String]](
+      "projects"
+      , required = true
+      , descr = "Projects for which metrics are wanted."
+    )
   }
 
   def main(args: Array[String]): Unit = {
@@ -53,15 +83,6 @@ object App {
 
     val apacheClient = ClientFactory.createClient
 
-    conf.username.get match {
-      case Some(u) => {
-        apacheClient.getCredentialsProvider().setCredentials(
-          new AuthScope(server, port)
-          , new UsernamePasswordCredentials(u, conf.password.apply)
-        )
-      }
-      case _ => {}
-    }
 
 
     try {
@@ -69,43 +90,73 @@ object App {
       val since = DateTime.parse(conf.since.apply)
       val until = DateTime.parse(conf.until.apply)
 
-      val vcsMetrics = new SubversionMetrics(svnUrlBase)
-
-      //val project = "/servicemix/smx4/bundles/trunk/"
-      val projsMap = conf.projects.apply.map { p =>
-        p -> vcsMetrics.projectsChanged(p, since, until) 
-      }
+      val vcsMetrics = 
+        conf.username.get match {
+          case Some(u) => new SubversionMetrics(svnUrlBase, u, conf.password.apply)
+          case _ => new SubversionMetrics(svnUrlBase)
+        }
+       
+      val projsMap = 
+        conf.projects.apply.map { p =>
+          val projs = 
+            conf.committers.get match {
+              // projects changed are really modules changed...
+              case Some(l) if !l.isEmpty => vcsMetrics.projectsChanged(p, l.toSet, since, until)
+              case _ => vcsMetrics.projectsChanged(p, since, until) 
+            }
+          p -> projs
+        }
 
       projsMap.foreach { case (p, metrics) =>
         println(p)
         print(metrics)
         println
-        println
       }
 
-      /*
-      val client = new HttpClient(apacheClient)
-
-      metricsMap.get("ningjiang") match {
-        case Some(metrics) => {
-          val projects = metrics.projectsChanged
-          val url = svnUrlBase + projects.toList.head + "/pom.xml"
-          println(url)
-          println(new MavenGAVRetriever(client).gav(url))
+      if (conf.sonarUrl.get.isDefined) {
+        conf.username.get match {
+          case Some(u) => {
+            apacheClient.getCredentialsProvider().setCredentials(
+              new AuthScope(server, port)
+              , new UsernamePasswordCredentials(u, conf.password.apply)
+            )
+          }
+          case _ => {}
         }
-        case _ => "couldn't find user:("
+
+        val client = new HttpClient(apacheClient)
+        val gavRetriever = new MavenGAVRetriever(client)
+        val sonarIds = 
+          for ( 
+               (p, metricsMap) <- projsMap;
+               (_, metrics) <- metricsMap;
+               path <- metrics.projectsChanged;
+               gav <- gavRetriever.gav(svnUrlBase + path + "/pom.xml")
+             ) yield {
+               val version = 
+                 if (gav.version == "") {
+                   conf.defaultVersion.get match {
+                     case Some(v) => v
+                     case _ => ""
+                   }
+                 } else {
+                   gav.version
+                 }
+               gav.group + ":" + gav.artifact + ":" + version.replace("-SNAPSHOT", "")
+             }
+
+        val sonar = new SonarMetrics(client, conf.sonarUrl.apply)
+
+        sonarIds.foreach { resource =>
+          try {
+            val metrics = sonar.metrics(resource, since, until)
+            println(metrics)
+          } catch {
+            case e: Exception => println("Problem getting metrics for " + 
+              resource + ".  " + e.getMessage)
+          }
+        }
       }
-      client
-      */
-
-      /*
-      val resource = "sonar-resource"
-
-      val url = server + "/sonar/api/timemachine" +
-      "?resource=" + resource +
-      "&metrics=coverage,ncloc&fromDateTime=2013-02-07"
-      val r = client.get(url)
-      */
 
     } finally {
       apacheClient.getConnectionManager.shutdown
@@ -137,11 +188,27 @@ object App {
   sealed case class MavenGAV(group: String, artifact: String, version: String)
 
   private class MavenGAVRetriever(httpClient: HttpClient) {
-    def gav(url: String): MavenGAV = {
+    // TODO externalize
+    val replaceMap = Map(
+      "rel_10_2_5" -> "10.2.5-SNAPSHOT"
+    )
+
+    def gav(url: String): Option[MavenGAV] = {
       val resp = httpClient.get(url)
-      val xml = XML.loadString(resp.content.get.toString)
-      def text(name: String) = (xml \ name).text.trim
-      MavenGAV(text("groupId"), text("artifactId"), text("version"))
+      if (resp.code < 299) {
+        val xml = XML.loadString(resp.content.get.toString)
+
+        // Try to get from itself, and then from parent
+        def text(name: String) = {
+          val tmp = (xml \ name).text.trim
+          if (tmp != "") tmp
+          else (xml \ "parent" \ name).text.trim
+        }
+
+        Some(MavenGAV(text("groupId"), text("artifactId"), text("version")))
+      } else {
+        None
+      }
     }
   }
 

@@ -92,11 +92,11 @@ private[this] class SvnCLILogRetriever(
       case _ => ""
     }
 
-    XML.loadString(
-      (svnPath + maybeUserInfo +
+    val cmd = svnPath + maybeUserInfo +
         " log -v -r {" + format(since) + "}:{" + format(until) + "} --xml " +
-        trimmedUrlPrefix + realProject)!!
-      )
+        trimmedUrlPrefix + realProject
+
+    XML.loadString(cmd!!)
   }
 }
 
