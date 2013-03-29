@@ -2,9 +2,12 @@ package org.beeherd.metrics
 
 import scala.xml.XML
 
+import org.beeherd.cli.utils.Tablizer
 import org.beeherd.client.XmlResponse
 import org.beeherd.client.http._
-import org.beeherd.metrics.sonar.SonarMetrics
+import org.beeherd.metrics.sonar.{
+  NumberMetric, ProjectMetrics, SonarMetrics
+}
 import org.beeherd.metrics.vcs.{
   CommitterMetrics, SubversionMetrics
 }
@@ -52,11 +55,6 @@ object App {
       "password"
       , descr = "Password for Subversion and Sonar authentication."
     )
-    val defaultVersion = opt[String](
-      "default-version"
-      , descr = "Default project version to use for Sonar analysis.  This is " +
-      "required if the project's pom does not include version information."
-    )
     val projects = trailArg[List[String]](
       "projects"
       , required = true
@@ -82,8 +80,17 @@ object App {
     val (protocol, server, port, _) = HttpRequest.parseUrl(svnUrlBase)
 
     val apacheClient = ClientFactory.createClient
+    val client = new HttpClient(apacheClient)
 
-
+    conf.username.get match {
+      case Some(u) => {
+        apacheClient.getCredentialsProvider().setCredentials(
+          new AuthScope(server, port)
+          , new UsernamePasswordCredentials(u, conf.password.apply)
+        )
+      }
+      case _ => {}
+    }
 
     try {
 
@@ -114,69 +121,76 @@ object App {
       }
 
       if (conf.sonarUrl.get.isDefined) {
-        conf.username.get match {
-          case Some(u) => {
-            apacheClient.getCredentialsProvider().setCredentials(
-              new AuthScope(server, port)
-              , new UsernamePasswordCredentials(u, conf.password.apply)
-            )
-          }
-          case _ => {}
-        }
-
-        val client = new HttpClient(apacheClient)
-        val gavRetriever = new MavenGAVRetriever(client)
-        val sonarIds = 
+        val projects = 
           for ( 
                (p, metricsMap) <- projsMap;
                (_, metrics) <- metricsMap;
-               path <- metrics.projectsChanged;
-               gav <- gavRetriever.gav(svnUrlBase + path + "/pom.xml")
-             ) yield {
-               val version = 
-                 if (gav.version == "") {
-                   conf.defaultVersion.get match {
-                     case Some(v) => v
-                     case _ => ""
-                   }
-                 } else {
-                   gav.version
-                 }
-               gav.group + ":" + gav.artifact + ":" + version.replace("-SNAPSHOT", "")
-             }
-
+               path <- metrics.projectsChanged
+             ) yield path
+ 
+        val gavRetriever = new MavenGAVRetriever(client)
         val sonar = new SonarMetrics(client, conf.sonarUrl.apply)
+        val sonarMetricss = sonarMetrics(sonar, svnUrlBase, gavRetriever, 
+          projects.map { case (p, _) => p }, since, until)
 
-        sonarIds.foreach { resource =>
-          try {
-            val metrics = sonar.metrics(resource, since, until)
-            println(metrics)
-          } catch {
-            case e: Exception => println("Problem getting metrics for " + 
-              resource + ".  " + e.getMessage)
-          }
-        }
+        print(sonarMetricss)
       }
-
     } finally {
       apacheClient.getConnectionManager.shutdown
     }
   }
 
-  private def print(metricsMap: Map[String, CommitterMetrics]): Unit = {
+  private def sonarMetrics(
+    sonar: SonarMetrics
+    , svnUrlBase: String
+    , gavRetriever: MavenGAVRetriever
+    , projects: List[String]
+    , since: DateTime
+    , until: DateTime
+  ): Map[String, Either[String, ProjectMetrics]] = {
+    val pathsWithSonarIds = 
+      for ( 
+           path <- projects;
+           gav <- gavRetriever.gav(svnUrlBase + path + "/pom.xml")
+         ) yield {
+           (
+             path
+             , gav.group + ":" + gav.artifact + ":" + gav.version.replace("-SNAPSHOT", "")
+           )
+         }
+
+    pathsWithSonarIds.map { case (path, resource) =>
+      try {
+        path -> Right(sonar.metrics(resource, since, until))
+      } catch {
+        case e: Exception => 
+          path -> Left("Problem getting metrics for " + 
+            resource + ".  " + e.getMessage)
+      }
+    }.toMap
+  }
+
+  private def indent(str: String): String = (" " * 4) + str
+
+  private def print(
+    metricsMap: Map[String, CommitterMetrics]
+  ): Unit = {
     def printCommitterMetrics(metrics: CommitterMetrics): Unit = {
-      val header = "Metrics for " + metrics.committer
+      val header = "VCS Metrics for " + metrics.committer
       println(header)
       println("-" * header.size)
 
-      def indent(str: String): String = (" " * 4) + str
 
       println(indent("Commits: " + metrics.commits))
       println()
 
       println(indent("Projects"))
       println(indent("--------"))
-      metrics.projectsChanged.foreach { p => println(indent(p)) }
+      metrics
+      .projectsChanged
+      .foreach { case (proj, commits) => 
+        println(indent(proj + " (" + commits + ")")) 
+      }
     }
 
     metricsMap
@@ -185,14 +199,57 @@ object App {
     .foreach { case (_, metrics) => printCommitterMetrics(metrics); println(); println() }
   }
 
+  private def print(projectMetrics: Map[String, Either[String, ProjectMetrics]]): Unit = {
+    println("Sonar Metrics")
+    println()
+    val (haveMetrics, doesNotHaveMetrics) = 
+      projectMetrics
+      .toList
+      .sortWith { _._1 < _._1 }
+      .partition { case (p, ms) => ms.isRight }
+
+    haveMetrics.foreach { case (path, metrics) => 
+      println(path)
+      println("-" * path.length)
+      print(metrics.right.get, " " * 4)
+      println()
+    }
+
+    if (!doesNotHaveMetrics.isEmpty) {
+      val header = "Projects for which no Sonar metrics could be retrieved"
+      println(header)
+      println("-" * header.size)
+      doesNotHaveMetrics.foreach { case (p, _) => println(indent(p)) }
+    }
+  }
+
+  private def print(projectMetrics: ProjectMetrics, tab: String): Unit = {
+    val tablizer = new Tablizer("  ");
+
+    def metric1(nm: NumberMetric, label: String) = metric2(nm.begin, nm.end, label)
+
+    def metric2(begin: Double, end: Double, label: String) = {
+      def fmt(d: Double) = "%.3f" format d
+
+      val change = 
+        if (begin == 0) "N/A"
+        else fmt(((end - begin) / begin * 1.0)) 
+      List(label, fmt(begin), fmt(end), change)
+    }
+
+    val headers = List("Metric", "Begin", "End", "% Change")
+    val data = List(
+      metric1(projectMetrics.linesOfCode, "Lines of Code (LOC)")
+      , metric1(projectMetrics.testCoverage, "% Test Coverage")
+    )
+    val rows = tablizer.tablize(data, headers)
+
+    rows.foreach { r => println(tab + r.mkString) }
+  }
+
   sealed case class MavenGAV(group: String, artifact: String, version: String)
 
   private class MavenGAVRetriever(httpClient: HttpClient) {
-    // TODO externalize
-    val replaceMap = Map(
-      "rel_10_2_5" -> "10.2.5-SNAPSHOT"
-    )
-
     def gav(url: String): Option[MavenGAV] = {
       val resp = httpClient.get(url)
       if (resp.code < 299) {
@@ -211,29 +268,4 @@ object App {
       }
     }
   }
-
-   /*
-  private def print(metricsMap: Map[String, CommitterMetrics]): Unit = { 
-    println(report.city + ", " + report.state);
-    println();
-    val tablizer = new Tablizer("  ");
-
-    val headers = List(
-      "Committerr, 
-    )   
-
-    val data = report.forecasts.map {f =>
-      List(
-        f.day + ""
-        , f.high + ""
-        , f.low + ""
-        , f.conditions
-        , f.rainChance + ""
-        , f.averageHumidity + ""
-        , f.maxWind + ""
-      )   
-    }   
-    println(tablizer.tablizeToStr(data, headers))
-  }
- */
 }

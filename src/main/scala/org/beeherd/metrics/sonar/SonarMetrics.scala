@@ -37,8 +37,6 @@ class SonarMetrics(
       "&toDateTime=" + format(until) + 
       "&metrics=coverage,ncloc"
 
-      println(url)
-
     val resp = httpClient.get(url)
 
     if (resp.code != 200)

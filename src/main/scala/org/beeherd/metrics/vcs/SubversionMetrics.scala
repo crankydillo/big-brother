@@ -57,6 +57,8 @@ class SubversionMetrics private[vcs] (
           .map { _.split("/src/") }
           .filter { _.size == 2 }
           .map { _(0) }
+          .groupBy { p => p }
+          .map { case (path, lst) => (path, lst.size) }
           .toSet
         )
     }.toMap

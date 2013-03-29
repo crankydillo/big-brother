@@ -62,5 +62,5 @@ trait VCSMetrics {
 case class CommitterMetrics(
   committer: String
   , commits: Int
-  , projectsChanged: Set[String]
+  , projectsChanged: Set[(String, Int)]  // Path and number of commits
 )
