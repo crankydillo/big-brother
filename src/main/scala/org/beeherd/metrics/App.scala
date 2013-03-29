@@ -5,9 +5,7 @@ import scala.xml.XML
 import org.beeherd.cli.utils.Tablizer
 import org.beeherd.client.XmlResponse
 import org.beeherd.client.http._
-import org.beeherd.metrics.sonar.{
-  NumberMetric, ProjectMetrics, SonarMetrics
-}
+import org.beeherd.metrics.sonar._
 import org.beeherd.metrics.vcs.{
   CommitterMetrics, SubversionMetrics
 }
@@ -115,7 +113,7 @@ object App {
         }
 
       projsMap.foreach { case (p, metrics) =>
-        println(p)
+        println("Project: " + p)
         print(metrics)
         println
       }
@@ -224,26 +222,35 @@ object App {
   }
 
   private def print(projectMetrics: ProjectMetrics, tab: String): Unit = {
-    val tablizer = new Tablizer("  ");
+    val na = "N/A"
 
-    def metric1(nm: NumberMetric, label: String) = metric2(nm.begin, nm.end, label)
-
-    def metric2(begin: Double, end: Double, label: String) = {
+    def metric(metric: Metric, label: String) = {
       def fmt(d: Double) = "%.3f" format d
 
-      val change = 
-        if (begin == 0) "N/A"
+      def change(begin: Double, end: Double): String = {
+        if (begin == 0) na
         else fmt(((end - begin) / begin * 1.0)) 
-      List(label, fmt(begin), fmt(end), change)
+      }
+
+      metric match {
+        case IntMetric(_, b, e) => List(label, b + "", + e + "", change(b, e))
+        case DoubleMetric(_, b, e) => List(label, fmt(b), fmt(e), change(b, e))
+      }
     }
 
     val headers = List("Metric", "Begin", "End", "% Change")
     val data = List(
-      metric1(projectMetrics.linesOfCode, "Lines of Code (LOC)")
-      , metric1(projectMetrics.testCoverage, "% Test Coverage")
+      metric(projectMetrics.linesOfCode, "Lines of Code (LOC)")
+      , metric(projectMetrics.testCoverage, "% Test Coverage")
+      , metric(projectMetrics.violations, "Violations")
     )
+    val tablizer = new Tablizer("  ");
     val rows = tablizer.tablize(data, headers)
 
+    def fmt(d: DateTime) = d.toString("yyyy-MM-dd")
+    println(indent("Dates: " + fmt(projectMetrics.start) + " - " +
+      fmt(projectMetrics.end)))
+    println()
     rows.foreach { r => println(tab + r.mkString) }
   }
 

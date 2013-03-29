@@ -35,7 +35,7 @@ class SonarMetrics(
       "?resource=" + project +
       "&fromDateTime=" + format(since) +
       "&toDateTime=" + format(until) + 
-      "&metrics=coverage,ncloc"
+      "&metrics=coverage,ncloc,violations"
 
     val resp = httpClient.get(url)
 
@@ -69,36 +69,43 @@ class SonarMetrics(
 
         val metrics = 
            metricNames.zipWithIndex.map { case (n, idx) => 
-              NumberMetric(n + ""
+              DoubleMetric(n + ""
                  , first("v").asInstanceOf[List[Double]](idx) 
                  , last("v").asInstanceOf[List[Double]](idx)
               )
            }
         val locs = {
             val m = metrics.find(m => m.name == "ncloc").get
-            NumberMetric("lines-of-code", m.begin.toDouble, m.end.toDouble)
+            IntMetric("lines-of-code", m.begin.toInt, m.end.toInt)
         }
         val coverages = {
             val m = metrics.find(m => m.name == "coverage").get
-            NumberMetric("test-coverage", m.begin.toDouble, m.end.toDouble)
+            DoubleMetric("test-coverage", m.begin.toDouble, m.end.toDouble)
+        }
+        val violations = {
+            val m = metrics.find(m => m.name == "violations").get
+            IntMetric("violations", m.begin.toInt, m.end.toInt)
         }
         def parse = (a:Any) => DateTime.parse(a + "")
-        ProjectMetrics(projName, parse(first("d")), parse(last("d")), locs, coverages, metrics)
+        ProjectMetrics(projName, parse(first("d")), parse(last("d")), locs, 
+          coverages, violations, metrics)
       }
       case s => throw new RuntimeException("Expected a JSON List, not " + s)
     }
   }
 }
 
-abstract class Metric
-case class NumberMetric(name: String, begin: Double, end: Double) extends Metric
+sealed abstract class Metric(name: String)
+case class DoubleMetric(name: String, begin: Double, end: Double) extends Metric(name)
+case class IntMetric(name: String, begin: Int, end: Int) extends Metric(name)
 
 case class ProjectMetrics(
   projectName: String
   , start: DateTime
   , end: DateTime
-  , linesOfCode: NumberMetric = NumberMetric("loc", 0, 0)
-  , testCoverage: NumberMetric = NumberMetric("coverage", 0, 0)
+  , linesOfCode: IntMetric = IntMetric("loc", 0, 0)
+  , testCoverage: DoubleMetric = DoubleMetric("coverage", 0, 0)
+  , violations: IntMetric = IntMetric("violations", 0, 0)
   , metrics: List[Metric] = Nil
 ) {
   def linesCoveredStart = linesOfCode.begin * testCoverage.begin
