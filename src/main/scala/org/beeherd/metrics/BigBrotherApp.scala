@@ -49,6 +49,7 @@ object BigBrotherApp {
     )
     val until = opt[String](
       "until"
+      , noshort = true
       , descr = "Ending date for captured metrics.  Defaults to today.  " +
       "Format: yyyy-MM-dd"
     )
@@ -60,11 +61,16 @@ object BigBrotherApp {
       "password"
       , descr = "Password for Subversion and Sonar authentication."
     )
+
+    val passwordPrompt = toggle("pp", descrYes = "Prompt for password.")
+
     val projects = trailArg[List[String]](
       "projects"
       , required = true
       , descr = "Projects for which metrics are wanted."
     )
+
+    mutuallyExclusive(password, passwordPrompt)
   }
 
   def main(args: Array[String]): Unit = {
@@ -87,11 +93,13 @@ object BigBrotherApp {
     val apacheClient = ClientFactory.createClient
     val client = new HttpClient(apacheClient)
 
+    val password = pwd(conf)
+
     conf.username.get match {
       case Some(u) => {
         apacheClient.getCredentialsProvider().setCredentials(
           new AuthScope(server, port)
-          , new UsernamePasswordCredentials(u, conf.password.apply)
+          , new UsernamePasswordCredentials(u, password.get)
         )
       }
       case _ => {}
@@ -113,7 +121,7 @@ object BigBrotherApp {
 
       val vcsMetrics = 
         conf.username.get match {
-          case Some(u) => new SubversionMetrics(svnUrlBase, u, conf.password.apply)
+          case Some(u) => new SubversionMetrics(svnUrlBase, u, password.get)
           case _ => new SubversionMetrics(svnUrlBase)
         }
        
@@ -122,7 +130,8 @@ object BigBrotherApp {
           val projs = 
             conf.committers.get match {
               // projects changed are really modules changed...
-              case Some(l) if !l.isEmpty => vcsMetrics.projectsChanged(p, l.toSet, since, until)
+              case Some(l) if !l.isEmpty => 
+                vcsMetrics.projectsChanged(p, l.toSet, since, until)
               case _ => vcsMetrics.projectsChanged(p, since, until) 
             }
           p -> projs
@@ -152,6 +161,21 @@ object BigBrotherApp {
       }
     } finally {
       apacheClient.getConnectionManager.shutdown
+    }
+  }
+
+  private def pwd(conf: Conf): Option[String] = {
+    // TODO Research the security implications of storing a password in a string
+    conf.password.get match {
+      case Some(p) => Some(p)
+      case _ =>
+        if (conf.passwordPrompt.isSupplied) {
+          Some(
+            new String(System.console.readPassword("%s", "Password: "))
+          )
+        } else {
+          None
+        }
     }
   }
 
@@ -187,14 +211,11 @@ object BigBrotherApp {
 
   private def indent(str: String): String = (" " * 4) + str
 
-  private def print(
-    metricsMap: Map[String, CommitterMetrics]
-  ): Unit = {
+  private def print(metricsMap: Map[String, CommitterMetrics]): Unit = {
     def printCommitterMetrics(metrics: CommitterMetrics): Unit = {
       val header = metrics.committer
       println(header)
       println("-" * header.size)
-
 
       println(indent("Commits: " + metrics.commits))
       println()
