@@ -17,14 +17,15 @@ with ThrownExpectations {
 
   private val sampleJson = """
 [ { "cells" : [ { "d" : "2013-02-07T03:54:15-0600",
-          "v" : [ 15.9, 100 ]
+          "v" : [ 15.9, 100, 23 ]
         },
         { "d" : "2013-02-08T03:57:26-0600",
-          "v" : [ 16.1, 200 ]
+          "v" : [ 16.1, 200, 21 ]
         }
       ],
     "cols" : [ { "metric" : "coverage" },
-        { "metric" : "ncloc" }
+        { "metric" : "ncloc" },
+        { "metric" : "violations" }
       ]
   } ]""".trim
 
@@ -44,7 +45,7 @@ with ThrownExpectations {
           "?resource=foo" +
           "&fromDateTime=2012-01-01" +
           "&toDateTime=2012-02-01" +
-          "&metrics=coverage,ncloc"
+          "&metrics=coverage,ncloc,violations"
 
         // Understandably, Mockito doesn't deal with Scala's default arguments
         // well.  Passing in nulls for defaults *seems* to work.

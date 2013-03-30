@@ -67,9 +67,9 @@ with ThrownExpectations {
           billy.commits mustEqual 2
         }
 
-        "the projects that the author touched" >> {
+        "the projects and number of files touched by the author" >> {
           billy.projectsChanged must containTheSameElementsAs(
-            List("java-pays-the-bills", "play-around"))
+            List(("java-pays-the-bills", 4), ("play-around", 1)))
         }
       }
     }
