@@ -16,10 +16,17 @@ import org.joda.time.DateTime
 import org.rogach.scallop._
 import org.rogach.scallop.exceptions._
 
-object App {
+/**
+ * A CLI that uses a VCS client to determine what projects, represented by
+ * paths, have changed over some period of time.  If the projects (paths) can be
+ * used to identify Sonar projects, Sonar metrics can be displayed.
+ */
+object BigBrotherApp {
+
+  private val DateFormat = "yyyy-MM-dd"
 
   private class Conf(arguments: Seq[String]) extends LazyScallopConf(arguments) {
-    version("Project Metrics 1.0")
+    version("Big Brother - Version Control System and Sonar Analysis 1.0")
     val svnUrlBase = opt[String](
       "svn-url-base"
       , short = 's'
@@ -37,13 +44,13 @@ object App {
     )
     val since = opt[String](
       "since"
-      , required = true
-      , descr = "Starting date for captured metrics.  Format: yyyy-MM-dd"
+      , descr = "Starting date for captured metrics.  Defaults to two weeks " +
+      "before --until value. Format: yyyy-MM-dd"
     )
     val until = opt[String](
       "until"
-      , required = true
-      , descr = "Ending date for captured metrics.  Format: yyyy-MM-dd"
+      , descr = "Ending date for captured metrics.  Defaults to today.  " +
+      "Format: yyyy-MM-dd"
     )
     val username = opt[String](
       "user"
@@ -92,8 +99,17 @@ object App {
 
     try {
 
-      val since = DateTime.parse(conf.since.apply)
-      val until = DateTime.parse(conf.until.apply)
+      val until = conf.until.get match {
+        case Some(s) => DateTime.parse(s)
+        case _ => new DateTime
+      }
+      val since = conf.since.get match {
+        case Some(s) => DateTime.parse(s)
+        case _ => until.minusWeeks(2)
+      }
+
+      println("Big Brother reporting on " + since.toString(DateFormat) + 
+        " to " + until.toString(DateFormat))
 
       val vcsMetrics = 
         conf.username.get match {
@@ -113,9 +129,10 @@ object App {
         }
 
       projsMap.foreach { case (p, metrics) =>
-        println("Project: " + p)
+        println("VCS Metrics for " + p)
+        println()
         print(metrics)
-        println
+        println()
       }
 
       if (conf.sonarUrl.get.isDefined) {
@@ -174,7 +191,7 @@ object App {
     metricsMap: Map[String, CommitterMetrics]
   ): Unit = {
     def printCommitterMetrics(metrics: CommitterMetrics): Unit = {
-      val header = "VCS Metrics for " + metrics.committer
+      val header = metrics.committer
       println(header)
       println("-" * header.size)
 
@@ -247,7 +264,8 @@ object App {
     val tablizer = new Tablizer("  ");
     val rows = tablizer.tablize(data, headers)
 
-    def fmt(d: DateTime) = d.toString("yyyy-MM-dd")
+    def fmt(d: DateTime) = d.toString(DateFormat)
+
     println(indent("Dates: " + fmt(projectMetrics.start) + " - " +
       fmt(projectMetrics.end)))
     println()
