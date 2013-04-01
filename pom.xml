@@ -4,7 +4,7 @@
   <groupId>org.beeherd.metrics</groupId>
   <artifactId>metrics</artifactId>
   <version>1.0-SNAPSHOT</version>
-  <name>Metrics Gatherer for Software Dev</name>
+  <name>Big Brother - Metrics Gatherer for Software Development</name>
   <properties>
     <aether.version>0.9.0.M1</aether.version>
     <maven.version>3.0.4</maven.version>
