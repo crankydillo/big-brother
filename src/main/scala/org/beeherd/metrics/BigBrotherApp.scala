@@ -224,6 +224,8 @@ object BigBrotherApp {
       println(indent("--------"))
       metrics
       .projectsChanged
+      .toList
+      .sortBy { case (p, _) => p }
       .foreach { case (proj, commits) => 
         println(indent(proj + " (" + commits + ")")) 
       }
@@ -231,7 +233,7 @@ object BigBrotherApp {
 
     metricsMap
     .toList
-    .sort ( _._1 < _._1)
+    .sortBy { case (p, _) => p }
     .foreach { case (_, metrics) => printCommitterMetrics(metrics); println(); println() }
   }
 
@@ -241,10 +243,11 @@ object BigBrotherApp {
     val (haveMetrics, doesNotHaveMetrics) = 
       projectMetrics
       .toList
-      .sortWith { _._1 < _._1 }
       .partition { case (p, ms) => ms.isRight }
 
-    haveMetrics.foreach { case (path, metrics) => 
+    haveMetrics
+    .sortBy { case (p, _) => p }
+    .foreach { case (path, metrics) => 
       println(path)
       println("-" * path.length)
       print(metrics.right.get, " " * 4)
@@ -255,7 +258,9 @@ object BigBrotherApp {
       val header = "Projects for which no Sonar metrics could be retrieved"
       println(header)
       println("-" * header.size)
-      doesNotHaveMetrics.foreach { case (p, _) => println(indent(p)) }
+      doesNotHaveMetrics
+      .sortBy { case (p, _) => p }
+      .foreach { case (p, _) => println(indent(p)) }
     }
   }
 
@@ -267,7 +272,7 @@ object BigBrotherApp {
 
       def change(begin: Double, end: Double): String = {
         if (begin == 0) na
-        else fmt(((end - begin) / begin * 1.0)) 
+        else fmt(((end - begin) / begin * 100.0)) 
       }
 
       metric match {
