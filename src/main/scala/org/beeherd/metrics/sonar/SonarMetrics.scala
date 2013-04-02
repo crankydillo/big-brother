@@ -31,7 +31,7 @@ class SonarMetrics(
   def metrics(project: String, since: DateTime, until: DateTime): ProjectMetrics = {
     def format(d: DateTime) = d.toString("yyyy-MM-dd")
 
-    val url = trimmedUrlPrefix + "/sonar/api/timemachine" +
+    val url = trimmedUrlPrefix + "/api/timemachine" +
       "?resource=" + project +
       "&fromDateTime=" + format(since) +
       "&toDateTime=" + format(until) + 
