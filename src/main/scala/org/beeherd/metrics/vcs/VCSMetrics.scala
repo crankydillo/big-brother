@@ -40,7 +40,6 @@ trait VCSMetrics {
     projectsChanged(project, since, until)
     .filter { case (committer, _) => committers.contains(committer) }
 
-
   /**
    * Retrieve the [[CommitterMetrics metrics]] for a project.
    *

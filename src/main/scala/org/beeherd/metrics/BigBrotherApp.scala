@@ -2,6 +2,11 @@ package org.beeherd.metrics
 
 import scala.xml.XML
 
+import org.apache.http.auth.{
+  AuthScope, UsernamePasswordCredentials
+}
+import org.apache.log4j.Logger
+
 import org.beeherd.cli.utils.Tablizer
 import org.beeherd.client.XmlResponse
 import org.beeherd.client.http._
@@ -9,12 +14,11 @@ import org.beeherd.metrics.sonar._
 import org.beeherd.metrics.vcs.{
   CommitterMetrics, SubversionMetrics
 }
-import org.apache.http.auth.{
-  AuthScope, UsernamePasswordCredentials
-}
 import org.joda.time.DateTime
 import org.rogach.scallop._
 import org.rogach.scallop.exceptions._
+
+class BigBrotherApp
 
 /**
  * A CLI that uses a VCS client to determine what projects, represented by
@@ -22,7 +26,7 @@ import org.rogach.scallop.exceptions._
  * used to identify Sonar projects, Sonar metrics can be displayed.
  */
 object BigBrotherApp {
-
+  private val Log = Logger.getLogger(classOf[BigBrotherApp])
   private val DateFormat = "yyyy-MM-dd"
 
   private class Conf(arguments: Seq[String]) extends LazyScallopConf(arguments) {
@@ -159,6 +163,10 @@ object BigBrotherApp {
 
         print(sonarMetricss)
       }
+    } catch {
+      case e: Exception => 
+        Console.err.println(e.getMessage)
+        Log.error("Exception", e)
     } finally {
       apacheClient.getConnectionManager.shutdown
     }

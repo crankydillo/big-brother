@@ -41,7 +41,7 @@ with ThrownExpectations {
         val sonar = new SonarMetrics(client, "http://foo")
         val metrics = sonar.metrics("foo", from, to)
 
-        val url = "http://foo/sonar/api/timemachine" +
+        val url = "http://foo/api/timemachine" +
           "?resource=foo" +
           "&fromDateTime=2012-01-01" +
           "&toDateTime=2012-02-01" +
