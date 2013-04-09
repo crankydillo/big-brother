@@ -2,9 +2,6 @@ package org.beeherd.metrics
 
 import scala.xml.XML
 
-import org.apache.http.auth.{
-  AuthScope, UsernamePasswordCredentials
-}
 import org.apache.log4j.Logger
 
 import org.beeherd.cli.utils.Tablizer
@@ -90,27 +87,19 @@ object BigBrotherApp {
       case ScallopException(m) => println(m); System.exit(1);
     }
 
-    val svnUrlBase = conf.svnUrlBase.apply
+    val svnUrlBase = trimUrl(conf.svnUrlBase.apply)
 
     val (protocol, server, port, _) = HttpRequest.parseUrl(svnUrlBase)
 
-    val apacheClient = ClientFactory.createClient
-    val client = new HttpClient(apacheClient)
-
     val password = pwd(conf)
 
-    conf.username.get match {
-      case Some(u) => {
-        apacheClient.getCredentialsProvider().setCredentials(
-          new AuthScope(server, port)
-          , new UsernamePasswordCredentials(u, password.get)
-        )
-      }
-      case _ => {}
+    val apacheClient = conf.username.get match {
+      case Some(u) => ClientFactory.createClient(server, u, password.get, port)
+      case _ => ClientFactory.createClient
     }
+    val client = new HttpClient(apacheClient)
 
     try {
-
       val until = conf.until.get match {
         case Some(s) => DateTime.parse(s)
         case _ => new DateTime
@@ -157,7 +146,7 @@ object BigBrotherApp {
              ) yield path
  
         val gavRetriever = new MavenGAVRetriever(client)
-        val sonar = new SonarMetrics(client, conf.sonarUrl.apply)
+        val sonar = new SonarMetrics(client, trimUrl(conf.sonarUrl.apply))
         val sonarMetricss = sonarMetrics(sonar, svnUrlBase, gavRetriever, 
           projects.map { case (p, _) => p }, since, until)
 
@@ -171,6 +160,10 @@ object BigBrotherApp {
       apacheClient.getConnectionManager.shutdown
     }
   }
+
+  private def trimUrl(url: String): String =
+    if (url.endsWith("/")) url.dropRight(1)
+    else url
 
   private def pwd(conf: Conf): Option[String] = {
     // TODO Research the security implications of storing a password in a string
