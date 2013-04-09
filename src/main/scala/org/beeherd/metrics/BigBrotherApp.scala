@@ -7,7 +7,9 @@ import org.apache.http.auth.{
 }
 import org.apache.log4j.Logger
 
-import org.beeherd.cli.utils.Tablizer
+import org.beeherd.cli.utils.{
+  DotDotDotter, Tablizer
+}
 import org.beeherd.client.XmlResponse
 import org.beeherd.client.http._
 import org.beeherd.metrics.sonar._
@@ -128,8 +130,8 @@ object BigBrotherApp {
           case Some(u) => new SubversionMetrics(svnUrlBase, u, password.get)
           case _ => new SubversionMetrics(svnUrlBase)
         }
-       
-      val projsMap = 
+
+      def retrieveVCSMetrics() = {
         conf.projects.apply.map { p =>
           val projs = 
             conf.committers.get match {
@@ -140,7 +142,14 @@ object BigBrotherApp {
             }
           p -> projs
         }
+      }
 
+      val vcsDotter = new DotDotDotter(retrieveVCSMetrics,
+        "Retrieving VCS Metrics")
+
+      val projsMap = vcsDotter.execute()
+
+      println()
       projsMap.foreach { case (p, metrics) =>
         println("VCS Metrics for " + p)
         println()
@@ -149,20 +158,28 @@ object BigBrotherApp {
       }
 
       if (conf.sonarUrl.get.isDefined) {
-        val projects = 
-          for ( 
-               (p, metricsMap) <- projsMap;
-               (_, metrics) <- metricsMap;
-               path <- metrics.projectsChanged
-             ) yield path
- 
-        val gavRetriever = new MavenGAVRetriever(client)
-        val sonar = new SonarMetrics(client, conf.sonarUrl.apply)
-        val sonarMetricss = sonarMetrics(sonar, svnUrlBase, gavRetriever, 
-          projects.map { case (p, _) => p }, since, until)
+        def retrieveSonarStats() = {
+          val projects = 
+            for ( 
+                 (p, metricsMap) <- projsMap;
+                 (_, metrics) <- metricsMap;
+                 path <- metrics.projectsChanged
+               ) yield path
+   
+          val gavRetriever = new MavenGAVRetriever(client)
+          val sonar = new SonarMetrics(client, conf.sonarUrl.apply)
+          sonarMetrics(sonar, svnUrlBase, gavRetriever, 
+            projects.map { case (p, _) => p }, since, until)
 
+        }
+
+        val sonarMetricss = new DotDotDotter(retrieveSonarStats, 
+          "Retrieving Sonar Stats").execute()
+
+        println()
         print(sonarMetricss)
       }
+
     } catch {
       case e: Exception => 
         Console.err.println(e.getMessage)
