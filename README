@@ -1,0 +1,19 @@
+Requirements
+------------
+
+You must have the Subversion command line application, svn, installed.
+
+How to Use
+----------
+
+Add big-brother/bin to your path.
+
+$ big-brother --help
+
+Subversion only
+
+$ big-brother -s https://alm.pervasive.com/svn/master -c syoung wnavey echun -u scox --pp pcc.core di.services
+
+Subversion and Sonar
+
+$ big-brother -s https://alm.pervasive.com/svn/master -S https://alm.pervasive.com/sonar -c syoung wnavey echun -u scox --pp pcc.core di.services
