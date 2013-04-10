@@ -1,3 +1,4 @@
+
 Requirements
 ------------
 
@@ -6,7 +7,7 @@ You must have the Subversion command line application, svn, installed.
 How to Use
 ----------
 
-Add big-brother/bin to your path.
+Add big-brother/bin to your path.  On Windows, use big-brother.bat even if you're using Cygwin (or fix the shell script).
 
 $ big-brother --help
 
