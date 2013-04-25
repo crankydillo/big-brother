@@ -95,7 +95,7 @@ private[this] class SvnCLILogRetriever(
     }
 
     val cmd = svnPath + maybeUserInfo +
-        " log -v -r {" + format(since) + "}:{" + format(until) + "} --xml " +
+        " log -v -r \\{" + format(since) + "\\}:\\{" + format(until) + "\\} --xml " +
         trimmedUrlPrefix + realProject
 
     XML.loadString(cmd!!)
