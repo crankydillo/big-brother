@@ -26,7 +26,8 @@ object BigBrotherApp {
   private val Log = Logger.getLogger(classOf[BigBrotherApp])
   private val DateFormat = "yyyy-MM-dd"
 
-  private class Conf(arguments: Seq[String]) extends LazyScallopConf(arguments) {
+  private class Conf(arguments: Seq[String]) 
+  extends LazyScallopConf(arguments, true) {
     version("Big Brother - Version Control System and Sonar Analysis 1.0")
     val svnUrlBase = opt[String](
       "svn-url-base"
@@ -65,7 +66,7 @@ object BigBrotherApp {
 
     val passwordPrompt = toggle("pp", descrYes = "Prompt for password.")
 
-    val projects = trailArg[List[String]](
+    val projects = opt[List[String]](
       "projects"
       , required = true
       , descr = "Projects for which metrics are wanted."
