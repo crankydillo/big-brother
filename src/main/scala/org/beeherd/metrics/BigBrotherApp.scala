@@ -4,9 +4,7 @@ import scala.xml.XML
 
 import org.apache.log4j.Logger
 
-import org.beeherd.cli.utils.{
-  DotDotDotter, Tablizer
-}
+import org.beeherd.cli.utils.Tablizer
 import org.beeherd.client.XmlResponse
 import org.beeherd.client.http._
 import org.beeherd.metrics.sonar._
@@ -134,10 +132,7 @@ object BigBrotherApp {
         }
       }
 
-      val vcsDotter = new DotDotDotter(retrieveVCSMetrics,
-        "Retrieving VCS Metrics")
-
-      val projsMap = vcsDotter.execute()
+      val projsMap = retrieveVCSMetrics()
 
       println()
       projsMap.foreach { case (p, metrics) =>
@@ -162,8 +157,7 @@ object BigBrotherApp {
             projects.map { case (p, _) => p }, since, until)
         }
 
-        val sonarMetricss = new DotDotDotter(retrieveSonarStats, 
-          "Retrieving Sonar Stats").execute()
+        val sonarMetricss = retrieveSonarStats()
 
         println()
         print(sonarMetricss)
