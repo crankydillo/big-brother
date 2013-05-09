@@ -94,11 +94,18 @@ private[this] class SvnCLILogRetriever(
       case _ => ""
     }
 
-    val cmd = svnPath + maybeUserInfo +
-        " log -v -r \\{" + format(since) + "\\}:\\{" + format(until) + "\\} --xml " +
-        trimmedUrlPrefix + realProject
+    def cmd(dateRange: String) = svnPath + maybeUserInfo + " log -v -r " +
+      dateRange + " --xml " + trimmedUrlPrefix + realProject
 
-    XML.loadString(cmd!!)
+    val results = 
+      try {
+        cmd("{" + format(since) + "}:{" + format(until) + "}")!!
+      } catch {
+        case e: Exception => cmd("\\{" + format(since) + "\\}:\\{" + 
+          format(until) + "\\}")!!
+      }
+
+    XML.loadString(results)
   }
 }
 
