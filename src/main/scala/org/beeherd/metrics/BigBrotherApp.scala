@@ -73,6 +73,13 @@ object BigBrotherApp {
     )
 
     mutuallyExclusive(password, passwordPrompt)
+
+    validateOpt(username, password, passwordPrompt) {
+      case (Some(u), None, None) => 
+        Left("You must use either -p or --pp if -u/--user is used")
+      case _ => Right(Unit)
+    }
+
   }
 
   def main(args: Array[String]): Unit = {
